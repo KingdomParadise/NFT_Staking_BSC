@@ -1,1 +1,1 @@
-# NFT_Staking_BSC
+# NFT_Staking_Phoenix
