@@ -51,6 +51,13 @@ contract Staker is Ownable {
         uint256 accCakePerShare; // Accumulated CAKEs per share, times 1e12. See below.
     }
 
+    // Info of each NFT
+    struct NFTInfo {
+        address owner;
+        uint256 amount;
+        address saleTokenAddress;
+    }
+
     // The CAKE TOKEN!
     ICakeToken public cake;
     // The SYRUP TOKEN!
@@ -68,6 +75,9 @@ contract Staker is Ownable {
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens.
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
+    // Info of each nft that related with staked LP tokens.
+    mapping (uint256 => mapping (address => NFTInfo)) public nftInfo;
+
     // Total allocation points. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when CAKE mining starts.
@@ -190,5 +200,10 @@ contract Staker is Ownable {
         IBEP20 newLpToken = migrator.migrate(lpToken);
         require(bal == newLpToken.balanceOf(address(this)), "migrate: bad");
         pool.lpToken = newLpToken;
+    }
+
+    // distribute the sold amount to the required pools(10 pools).
+    function stake(address _nftAddress, uint256 _amount) public {
+        
     }
 }
