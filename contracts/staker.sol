@@ -5,11 +5,24 @@ import '@pancakeswap/pancake-swap-lib/contracts/token/BEP20/IBEP20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 
 interface ICakeToken is IBEP20 {
-
+    function mint(address _to, uint256 _amount) external;
 }
 
 interface ISyrupBar is IBEP20 {
 
+}
+
+interface IMigratorChef {
+    // Perform LP token migration from legacy PancakeSwap to CakeSwap.
+    // Take the current LP token address and return the new LP token address.
+    // Migrator should have full access to the caller's LP token.
+    // Return the new LP token address.
+    //
+    // XXX Migrator must have allowance access to PancakeSwap LP tokens.
+    // CakeSwap must mint EXACTLY the same amount of CakeSwap LP tokens or
+    // else something bad will happen. Traditional PancakeSwap does not
+    // do that so be careful!
+    function migrate(IBEP20 token) external returns (IBEP20);
 }
 
 contract Staker is Ownable {
@@ -48,6 +61,8 @@ contract Staker is Ownable {
     uint256 public cakePerBlock;
     // Bonus muliplier for early cake makers.
     uint256 public BONUS_MULTIPLIER = 1;
+    // The migrator contract. It has a lot of power. Can only be set through governance (owner).
+    IMigratorChef public migrator;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -59,21 +74,24 @@ contract Staker is Ownable {
     uint256 public startBlock;
 
     constructor(
-        ICakeToken _cake, // 0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82
-        ISyrupBar _syrup, // 0x009cf7bc57584b7998236eff51b98a168dcea9b0
+        // ICakeToken _cake, // 0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82
+        // ISyrupBar _syrup, // 0x009cF7bC57584b7998236eff51b98A168DceA9B0
         address _devaddr,
         uint256 _cakePerBlock,
         uint256 _startBlock
     ) {
-        cake = _cake;
-        syrup = _syrup;
+        // cake = _cake;
+        // syrup = _syrup;
+        cake = ICakeToken(0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82);
+        syrup = ISyrupBar(0x009cF7bC57584b7998236eff51b98A168DceA9B0);
+
         devaddr = _devaddr;
         cakePerBlock = _cakePerBlock;
         startBlock = _startBlock;
 
         // staking pool
         poolInfo.push(PoolInfo({
-            lpToken: _cake,
+            lpToken: cake,
             allocPoint: 1000,
             lastRewardBlock: startBlock,
             accCakePerShare: 0
@@ -142,5 +160,35 @@ contract Staker is Ownable {
             accCakePerShare: 0
         }));
         updateStakingPool();
+    }
+    
+    // Update the given pool's CAKE allocation point. Can only be called by the owner.
+    function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public onlyOwner {
+        if (_withUpdate) {
+            massUpdatePools();
+        }
+        uint256 prevAllocPoint = poolInfo[_pid].allocPoint;
+        poolInfo[_pid].allocPoint = _allocPoint;
+        if (prevAllocPoint != _allocPoint) {
+            totalAllocPoint = totalAllocPoint - prevAllocPoint + _allocPoint;
+            updateStakingPool();
+        }
+    }
+
+    // Set the migrator contract. Can only be called by the owner.
+    function setMigrator(IMigratorChef _migrator) public onlyOwner {
+        migrator = _migrator;
+    }
+
+    // Migrate lp token to another lp contract. Can be called by anyone. We trust that migrator contract is good.
+    function migrate(uint256 _pid) public {
+        require(address(migrator) != address(0), "migrate: no migrator");
+        PoolInfo storage pool = poolInfo[_pid];
+        IBEP20 lpToken = pool.lpToken;
+        uint256 bal = lpToken.balanceOf(address(this));
+        lpToken.approve(address(migrator), bal);
+        IBEP20 newLpToken = migrator.migrate(lpToken);
+        require(bal == newLpToken.balanceOf(address(this)), "migrate: bad");
+        pool.lpToken = newLpToken;
     }
 }
